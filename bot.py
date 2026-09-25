@@ -1,13 +1,11 @@
-import base64
 import html
-import http.server
 import logging
 import os
 import re
-import socketserver
 import threading
 import urllib.parse
 from bs4 import BeautifulSoup
+from flask import Flask
 import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -21,10 +19,7 @@ from telegram.ext import (
 
 logging.basicConfig(level=logging.INFO)
 
-# नया Telegram Bot Token
 BOT_TOKEN = "8871209884:AAGQ9WEna6DKYSEPywx5voEwQlxqgDCbHaE"
-
-# VegaMovies Active Domain
 BASE_URL = "https://vegamovies.gallery"
 HEADERS = {
     "User-Agent": (
@@ -35,20 +30,18 @@ HEADERS = {
 
 CACHE = {}
 
+# Render Web Service के लिए Flask सर्वर (बिना पोर्ट क्रैश के)
+web_app = Flask(__name__)
 
-# Render Web Service को Live रखने के लिए छोटा बैकग्राउंड वेब सर्वर
-def run_dummy_server():
-    port = int(os.environ.get("PORT", 8080))
 
-    class Handler(http.server.SimpleHTTPRequestHandler):
+@web_app.route("/")
+def home():
+    return "Bot is alive and running!"
 
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"VegaStream Bot is Running 24/7!")
 
-    with socketserver.TCPServer(("", port), Handler) as httpd:
-        httpd.serve_forever()
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host="0.0.0.0", port=port)
 
 
 def fetch_soup(url):
@@ -65,7 +58,6 @@ def extract_movie_cards(soup):
     results = []
     if not soup:
         return results
-
     articles = soup.find_all("article")
     for art in articles[:8]:
         title_el = art.find(["h2", "h3"])
@@ -82,13 +74,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ होमपेज से लेटेस्ट मूवीज लोड हो रही हैं...")
     soup = fetch_soup(BASE_URL)
     cards = extract_movie_cards(soup)
-
     if not cards:
         await update.message.reply_text(
             "⚠️ मूवीज लोड नहीं हो सकीं। कृपया मूवी का नाम लिखकर सर्च करें।"
         )
         return
-
     keyboard = []
     for title, link in cards:
         cache_id = str(abs(hash(link)))[:10]
@@ -96,7 +86,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append(
             [InlineKeyboardButton(f"🎬 {title}", callback_data=f"sel_{cache_id}")]
         )
-
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         "🔥 **VegaMovies लेटेस्ट अपडेट्स**\n\nनीचे से मूवी चुनें या नाम लिखकर सर्च करें:",
@@ -109,16 +98,13 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip()
     search_url = f"{BASE_URL}/?s={urllib.parse.quote(query)}"
     await update.message.reply_text(f"🔍 '{query}' सर्च किया जा रहा है...")
-
     soup = fetch_soup(search_url)
     cards = extract_movie_cards(soup)
-
     if not cards:
         await update.message.reply_text(
             "❌ कोई मूवी नहीं मिली! सही स्पेलिंग लिखकर दोबारा भेजें।"
         )
         return
-
     keyboard = []
     for title, link in cards:
         cache_id = str(abs(hash(link)))[:10]
@@ -126,7 +112,6 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append(
             [InlineKeyboardButton(f"🎬 {title}", callback_data=f"sel_{cache_id}")]
         )
-
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         "🎯 **सर्च परिणाम:**", reply_markup=reply_markup, parse_mode="Markdown"
@@ -136,20 +121,16 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     data = query.data
 
     if data.startswith("sel_"):
         cache_id = data.replace("sel_", "")
         movie_url = CACHE.get(cache_id)
-
         if not movie_url:
             await query.edit_message_text("सत्र समाप्त हो गया, दोबारा सर्च करें।")
             return
 
-        await query.edit_message_text(
-            "⚙️ मूवी की क्वालिटी, भाषा और लिंक्स निकाले जा रहे हैं..."
-        )
+        await query.edit_message_text("⚙️ लिंक्स निकाले जा रहे हैं...")
         soup = fetch_soup(movie_url)
         if not soup:
             await query.edit_message_text("डिटेल्स लोड नहीं हो सकीं।")
@@ -178,9 +159,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             href = a["href"]
             txt = a.get_text().strip()
             full_txt = f"{txt} {href}"
-
-            match = re.search(r"(480p|720p|1080p|2160p|4k)", full_txt, re.IGNORECASE)
-            if match and ("download" in full_txt.lower() or "v-cloud" in href or "fast" in href.lower() or "drive" in href.lower()):
+            match = re.search(
+                r"(480p|720p|1080p|2160p|4k)", full_txt, re.IGNORECASE
+            )
+            if match and (
+                "download" in full_txt.lower()
+                or "v-cloud" in href
+                or "fast" in href.lower()
+                or "drive" in href.lower()
+            ):
                 quality = match.group(1).upper()
                 vlc_scheme = f"vlc-x-callback://x-callback-url/stream?url={urllib.parse.quote(href)}"
                 download_buttons.append([
@@ -192,7 +179,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not download_buttons:
             for a in links:
-                if "download" in a.get_text().lower() and len(download_buttons) < 3:
+                if (
+                    "download" in a.get_text().lower()
+                    and len(download_buttons) < 3
+                ):
                     h = a["href"]
                     v_url = f"vlc-x-callback://x-callback-url/stream?url={urllib.parse.quote(h)}"
                     download_buttons.append([
@@ -201,12 +191,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ])
 
         caption = (
-            f"🎬 **मूवी डिटेल्स**\n\n"
-            f"🔊 **ऑडियो/भाषा:** `{audio_info}`\n"
-            f"📝 **सबटाइटल:** `{sub_info}`\n\n"
-            f"👇 नीचे से अपनी क्वालिटी चुनें:"
+            f"🎬 **मूवी डिटेल्स**\n\n🔊 **ऑडियो/भाषा:** `{audio_info}`\n📝"
+            f" **सबटाइटल:** `{sub_info}`\n\n👇 नीचे से अपनी क्वालिटी चुनें:"
         )
-
         reply_markup = InlineKeyboardMarkup(download_buttons)
         await query.edit_message_text(
             caption, reply_markup=reply_markup, parse_mode="Markdown"
@@ -214,11 +201,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    # बैकग्राउंड थ्रेड में डमी सर्वर शुरू करना
-    server_thread = threading.Thread(target=run_dummy_server, daemon=True)
-    server_thread.start()
-
-    # टेलीग्राम बॉट शुरू करना
+    threading.Thread(target=run_web, daemon=True).start()
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(
