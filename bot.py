@@ -21,7 +21,8 @@ logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = "8871209884:AAEXvGyDDsIiQ1hg4ny1N4VQrPnDPSY2tDM"
 
 # एक्टिव बेस डोमेन
-BASE_URL = "https://vegamovies.im"
+BASE_URL = "https://vegamovies.gallery"
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15"
