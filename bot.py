@@ -1,7 +1,11 @@
 import base64
 import html
+import http.server
 import logging
+import os
 import re
+import socketserver
+import threading
 import urllib.parse
 from bs4 import BeautifulSoup
 import requests
@@ -17,12 +21,11 @@ from telegram.ext import (
 
 logging.basicConfig(level=logging.INFO)
 
-# आपका Telegram Bot Token
-BOT_TOKEN = "8871209884:AAEXvGyDDsIiQ1hg4ny1N4VQrPnDPSY2tDM"
+# नया Telegram Bot Token
+BOT_TOKEN = "8871209884:AAGQ9WEna6DKYSEPywx5voEwQlxqgDCbHaE"
 
-# एक्टिव बेस डोमेन
+# VegaMovies Active Domain
 BASE_URL = "https://vegamovies.gallery"
-
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15"
@@ -31,6 +34,21 @@ HEADERS = {
 }
 
 CACHE = {}
+
+
+# Render Web Service को Live रखने के लिए छोटा बैकग्राउंड वेब सर्वर
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"VegaStream Bot is Running 24/7!")
+
+    with socketserver.TCPServer(("", port), Handler) as httpd:
+        httpd.serve_forever()
 
 
 def fetch_soup(url):
@@ -196,6 +214,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    # बैकग्राउंड थ्रेड में डमी सर्वर शुरू करना
+    server_thread = threading.Thread(target=run_dummy_server, daemon=True)
+    server_thread.start()
+
+    # टेलीग्राम बॉट शुरू करना
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(
