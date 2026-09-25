@@ -19,7 +19,7 @@ from telegram.ext import (
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = "8871209884:AAGQ9WEna6DKYSEPywx5voEwQlxqgDCbHaE"
+BOT_TOKEN = "8924877774:AAEzdQ3zGZWX0SHUhVxbUK_jrKTUdoQAb0I"
 BASE_URL = "https://vegamovies.gallery"
 HEADERS = {
     "User-Agent": (
